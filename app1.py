@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
+from io import BytesIO
 
-st.set_page_config(page_title="Date-Time Splitter + Pivot", page_icon="⏰", layout="wide")
+st.set_page_config(page_title="Date-Time Splitter + Pivot + Column Selector", page_icon="📊", layout="wide")
 
-st.title("⏰ Date-Time Splitter & Pivot Table")
-st.write("Upload a file, choose an Excel sheet if applicable, convert datetime columns, and create pivot tables dynamically.")
+st.title("📊 Date-Time Splitter, Pivot & Custom Column Export")
+st.write("Upload a file, select sheet (if Excel), process date-time columns, create a pivot table, and download only the columns you want.")
 
 # --- File Upload ---
 uploaded_file = st.file_uploader("📤 Upload CSV or Excel file", type=["csv", "xlsx"])
@@ -14,7 +15,7 @@ if uploaded_file:
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
     else:
-        # Read Excel sheet names first
+        # Excel — show sheet selection
         xls = pd.ExcelFile(uploaded_file)
         sheet_name = st.selectbox("📑 Select a sheet to process:", xls.sheet_names)
         df = pd.read_excel(xls, sheet_name=sheet_name)
@@ -35,7 +36,6 @@ if uploaded_file:
         for col in selected_cols:
             df[col + "_datetime"] = pd.to_datetime(df[col], errors="coerce")
 
-            # Create new columns
             df[col + "_Date"] = df[col + "_datetime"].dt.date
             df[col + "_Time"] = df[col + "_datetime"].dt.strftime("%H:%M")
             df[col + "_Hour_Slot"] = (
@@ -45,7 +45,6 @@ if uploaded_file:
                 + ":00"
             )
 
-            # Cleanup
             df.drop(columns=[col + "_datetime"], inplace=True)
             if remove_original:
                 df.drop(columns=[col], inplace=True)
@@ -53,26 +52,18 @@ if uploaded_file:
         st.success("✅ Date-Time conversion complete!")
         st.dataframe(df.head(20))
 
-        # Download converted data
-        csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 Download Converted CSV",
-            csv,
-            file_name="converted_datetime_columns.csv",
-            mime="text/csv",
-        )
-
     # --- Pivot Table Section ---
     st.markdown("---")
-    st.markdown("### 📊 Step 2: Create Pivot Table")
+    st.markdown("### 📈 Step 2: Create Pivot Table")
 
-    with st.expander("🔧 Pivot Table Options", expanded=True):
+    with st.expander("⚙️ Pivot Table Options", expanded=True):
         rows = st.multiselect("Rows:", df.columns)
         cols = st.multiselect("Columns:", df.columns)
         values = st.multiselect("Values:", df.select_dtypes(include=['number', 'float', 'int']).columns)
         aggfunc = st.selectbox("Aggregation Function:", ["sum", "count", "mean", "max", "min"])
 
-    # --- Generate Pivot Table ---
+    final_df = df  # Default (if pivot not used)
+
     if rows and values:
         try:
             pivot = pd.pivot_table(
@@ -82,25 +73,50 @@ if uploaded_file:
                 values=values,
                 aggfunc=aggfunc,
                 fill_value=0,
-            )
+            ).reset_index()
 
             st.success("✅ Pivot table generated successfully!")
-            st.subheader("📈 Pivot Table Result")
+            st.subheader("📊 Pivot Table Result")
             st.dataframe(pivot)
-
-            # Download pivot result
-            csv_pivot = pivot.to_csv().encode("utf-8")
-            st.download_button(
-                "📥 Download Pivot Table CSV",
-                csv_pivot,
-                file_name="pivot_table.csv",
-                mime="text/csv",
-            )
+            final_df = pivot  # Update for export
 
         except Exception as e:
             st.error(f"⚠️ Error creating pivot table: {e}")
-
     else:
-        st.info("👉 Select at least **Rows** and **Values** to generate the Pivot Table.")
+        st.info("👉 Select at least **Rows** and **Values** to generate the Pivot Table (or skip this step).")
+
+    # --- Column Selection for Download ---
+    st.markdown("---")
+    st.markdown("### 📥 Step 3: Select Columns for Download")
+
+    selected_export_cols = st.multiselect(
+        "Choose columns to include in final file:",
+        options=list(final_df.columns),
+        default=list(final_df.columns)  # All selected by default
+    )
+
+    if selected_export_cols:
+        export_df = final_df[selected_export_cols]
+
+        # --- CSV Download ---
+        csv_data = export_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇️ Download Selected Columns as CSV",
+            data=csv_data,
+            file_name="selected_columns.csv",
+            mime="text/csv",
+        )
+
+        # --- Excel Download ---
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            export_df.to_excel(writer, index=False, sheet_name="Processed_Data")
+        st.download_button(
+            label="⬇️ Download Selected Columns as Excel",
+            data=output.getvalue(),
+            file_name="selected_columns.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
 else:
     st.info("👆 Please upload a CSV or Excel file to begin.")
