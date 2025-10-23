@@ -4,17 +4,20 @@ import pandas as pd
 st.set_page_config(page_title="Date-Time Splitter + Pivot", page_icon="⏰", layout="wide")
 
 st.title("⏰ Date-Time Splitter & Pivot Table")
-st.write("Upload a file, convert datetime columns, and create pivot tables dynamically.")
+st.write("Upload a file, choose an Excel sheet if applicable, convert datetime columns, and create pivot tables dynamically.")
 
 # --- File Upload ---
 uploaded_file = st.file_uploader("📤 Upload CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded_file:
-    # Read file
+    # Detect file type
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
     else:
-        df = pd.read_excel(uploaded_file)
+        # Read Excel sheet names first
+        xls = pd.ExcelFile(uploaded_file)
+        sheet_name = st.selectbox("📑 Select a sheet to process:", xls.sheet_names)
+        df = pd.read_excel(xls, sheet_name=sheet_name)
 
     st.subheader("📋 Uploaded Data Preview")
     st.dataframe(df.head())
