@@ -43,21 +43,30 @@ if uploaded_file:
     with col2:
         end_col = st.selectbox("Select End Time Column", datetime_cols, key="end")
 
-    # Button to calculate
     if st.button("➕ Calculate Hour Difference"):
-        if start_col == end_col:
-            st.warning("⚠️ Start and End columns cannot be the same!")
-        else:
-            # Calculate time difference
-            time_diff = df[end_col] - df[start_col]
-            hours = time_diff.dt.total_seconds() / 3600
-            hours_60min = hours.astype(float).apply(lambda x: int(x) + ((x - int(x)) * 60) / 100)
+    if start_col == end_col:
+        st.warning("⚠️ Start and End columns cannot be the same!")
+    else:
+        # Calculate time difference
+        time_diff = df[end_col] - df[start_col]
+        hours = time_diff.dt.total_seconds() / 3600
 
-            # Add new column
-            new_col_name = f"{start_col}_to_{end_col}_Hr"
-            df[new_col_name] = hours_60min.round(2)
+        # Convert to 60-minute style safely
+        def convert_to_60min_format(x):
+            if pd.isna(x):
+                return None
+            hrs = int(x)
+            mins = round((x - hrs) * 60)
+            return round(hrs + mins / 100, 2)
 
-            st.success(f"✅ Added new column: {new_col_name}")
+        hours_60min = hours.apply(convert_to_60min_format)
+
+        # Add new column
+        new_col_name = f"{start_col}_to_{end_col}_Hr"
+        df[new_col_name] = hours_60min
+
+        st.success(f"✅ Added new column: {new_col_name}")
+
 
     # --- View Section ---
     st.markdown("### 👀 Step 2: View Data")
