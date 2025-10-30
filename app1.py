@@ -4,13 +4,13 @@ from io import BytesIO
 
 st.set_page_config(page_title="⏱️ Hour & Percentile Calculator", page_icon="📊", layout="wide")
 
-st.title("📊 Multi Hour Difference + Percentile Calculator")
+st.title("📊 Hour Difference + Percentile Calculator")
 
-# --- Initialize Session State ---
+# --- Initialize session ---
 if "df" not in st.session_state:
     st.session_state.df = None
 
-# --- File Upload Section ---
+# --- File Upload ---
 uploaded_file = st.file_uploader("📤 Upload CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded_file:
@@ -20,10 +20,8 @@ if uploaded_file:
         xls = pd.ExcelFile(uploaded_file)
         sheet_name = st.selectbox("📑 Select a sheet to process:", xls.sheet_names)
         df = pd.read_excel(xls, sheet_name=sheet_name)
-
     st.session_state.df = df
 
-# --- If Data is Available ---
 if st.session_state.df is not None:
     df = st.session_state.df
 
@@ -52,11 +50,9 @@ if st.session_state.df is not None:
             try:
                 start_time = pd.to_datetime(df[start_col], errors="coerce")
                 end_time = pd.to_datetime(df[end_col], errors="coerce")
-
-                # Calculate hour difference
                 diff_hours = (end_time - start_time).dt.total_seconds() / 3600
 
-                # Convert to 60-minute format (e.g., 3.09)
+                # Convert hour format to hr.min format
                 def convert_to_60min_format(x):
                     if pd.isna(x):
                         return None
@@ -64,7 +60,9 @@ if st.session_state.df is not None:
                     mins = round((x - hrs) * 60)
                     return round(hrs + mins / 100, 2)
 
-                df[f"{start_col}_to_{end_col}_Hr"] = diff_hours.apply(convert_to_60min_format)
+                hr_col_name = f"{start_col}_to_{end_col}_Hr"
+                df[hr_col_name] = diff_hours.apply(convert_to_60min_format)
+
             except Exception as e:
                 st.error(f"⚠️ Error calculating {start_col} → {end_col}: {e}")
 
@@ -73,39 +71,42 @@ if st.session_state.df is not None:
         st.dataframe(df.head(20))
 
     # =========================================================
-    # 🎯 STEP 2: PERCENTILE CALCULATION (IN MAIN DATA)
+    # 🎯 STEP 2: PERCENTILE CALCULATION (ONLY FOR HR COLUMNS)
     # =========================================================
     st.markdown("---")
-    st.markdown("## 🎯 Step 2: Calculate Percentiles (Merged in Main Data)")
+    st.markdown("## 🎯 Step 2: Calculate Percentiles (Only for Hour Columns)")
 
-    numeric_cols = df.select_dtypes(include=['number', 'float', 'int']).columns.tolist()
-    selected_cols = st.multiselect("Select numeric columns to calculate percentile:", numeric_cols)
+    hr_cols = [col for col in df.columns if col.endswith("_Hr")]
+    if not hr_cols:
+        st.warning("⚠️ No hour difference columns found. Please calculate them first.")
+    else:
+        selected_hr_cols = st.multiselect("Select Hour Columns to Calculate Percentile:", hr_cols, default=hr_cols)
+        percentile_options = [90, 95]
+        selected_percentiles = st.multiselect("Select Percentile(s):", percentile_options, default=[95])
+        group_col = st.selectbox("Select Grouping Column (Optional):", [None] + list(df.columns))
 
-    percentile_value = st.number_input("Enter percentile value (e.g. 90, 95):", min_value=1, max_value=100, value=95)
+        if st.button("📈 Calculate Percentiles"):
+            if selected_hr_cols:
+                if group_col:
+                    # Group-wise percentile
+                    for p in selected_percentiles:
+                        grouped = df.groupby(group_col)[selected_hr_cols].quantile(p / 100).reset_index()
+                        df = pd.merge(df, grouped, on=group_col, how="left", suffixes=("", f"_P{p}"))
+                else:
+                    # Global percentile
+                    for p in selected_percentiles:
+                        for col in selected_hr_cols:
+                            percentile_val = df[col].quantile(p / 100)
+                            df[f"{col}_P{p}"] = percentile_val
 
-    group_col = st.selectbox("Select grouping column (optional):", [None] + list(df.columns))
-
-    if st.button("📈 Calculate Percentiles"):
-        if selected_cols:
-            if group_col:
-                grouped = df.groupby(group_col)
-                percentile_df = grouped[selected_cols].quantile(percentile_value / 100).reset_index()
-
-                # Merge with main df
-                df = pd.merge(df, percentile_df, on=group_col, how="left", suffixes=("", f"_P{percentile_value}"))
+                st.session_state.df = df
+                st.success(f"✅ Percentiles ({', '.join(map(str, selected_percentiles))}) calculated successfully!")
+                st.dataframe(df.head(20))
             else:
-                for col in selected_cols:
-                    percentile_val = df[col].quantile(percentile_value / 100)
-                    df[f"{col}_P{percentile_value}"] = percentile_val
-
-            st.session_state.df = df
-            st.success(f"✅ Percentile ({percentile_value}th) calculated and added to main dataset!")
-            st.dataframe(df.head(20))
-        else:
-            st.warning("⚠️ Please select at least one numeric column.")
+                st.warning("⚠️ Please select at least one hour column.")
 
     # =========================================================
-    # 💾 STEP 3: DOWNLOAD UPDATED DATA
+    # 💾 STEP 3: DOWNLOAD FINAL DATA
     # =========================================================
     st.markdown("---")
     st.markdown("## 💾 Step 3: Download Final Updated Dataset")
@@ -114,7 +115,7 @@ if st.session_state.df is not None:
     st.download_button(
         label="⬇️ Download Full Data (CSV)",
         data=csv_data,
-        file_name="final_updated_data.csv",
+        file_name="final_data.csv",
         mime="text/csv"
     )
 
@@ -124,7 +125,7 @@ if st.session_state.df is not None:
     st.download_button(
         label="⬇️ Download Full Data (Excel)",
         data=output.getvalue(),
-        file_name="final_updated_data.xlsx",
+        file_name="final_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
