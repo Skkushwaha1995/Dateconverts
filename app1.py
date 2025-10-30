@@ -52,6 +52,34 @@ if uploaded_file:
         st.success("✅ Date-Time conversion complete!")
         st.dataframe(df.head(20))
 
+    # --- Time Difference (Hour Calculation) Section ---
+    st.markdown("---")
+    st.markdown("### ⏱️ Step 1.5: Calculate Time Difference Between Two Columns (in Hours - 60 min format)")
+
+    time_cols = [col for col in df.columns if 'time' in col.lower() or 'date' in col.lower()]
+    col1 = st.selectbox("Select Start Time Column:", options=time_cols)
+    col2 = st.selectbox("Select End Time Column:", options=time_cols)
+
+    if col1 and col2:
+        if st.button("⚡ Calculate Hour Difference"):
+            try:
+                df[col1] = pd.to_datetime(df[col1], errors="coerce")
+                df[col2] = pd.to_datetime(df[col2], errors="coerce")
+
+                # Calculate total seconds difference
+                diff_seconds = (df[col2] - df[col1]).dt.total_seconds()
+
+                # Convert to hours and minutes (3.09 format instead of 3.75)
+                df["Hour_Diff_60min_Format"] = (
+                    (diff_seconds // 3600) + ((diff_seconds % 3600) / 60) / 100
+                ).round(2)
+
+                st.success(f"✅ Hour difference calculated between '{col1}' and '{col2}' in 60-min format!")
+                st.dataframe(df[[col1, col2, "Hour_Diff_60min_Format"]].head(20))
+
+            except Exception as e:
+                st.error(f"⚠️ Error calculating time difference: {e}")
+
     # --- Pivot Table Section ---
     st.markdown("---")
     st.markdown("### 📈 Step 2: Create Pivot Table")
