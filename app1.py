@@ -43,30 +43,30 @@ if uploaded_file:
     with col2:
         end_col = st.selectbox("Select End Time Column", datetime_cols, key="end")
 
+    # Button to calculate
     if st.button("➕ Calculate Hour Difference"):
-    if start_col == end_col:
-        st.warning("⚠️ Start and End columns cannot be the same!")
-    else:
-        # Calculate time difference
-        time_diff = df[end_col] - df[start_col]
-        hours = time_diff.dt.total_seconds() / 3600
+        if start_col == end_col:
+            st.warning("⚠️ Start and End columns cannot be the same!")
+        else:
+            # Calculate time difference
+            time_diff = df[end_col] - df[start_col]
+            hours = time_diff.dt.total_seconds() / 3600
 
-        # Convert to 60-minute style safely
-        def convert_to_60min_format(x):
-            if pd.isna(x):
-                return None
-            hrs = int(x)
-            mins = round((x - hrs) * 60)
-            return round(hrs + mins / 100, 2)
+            # Safe conversion to 60-minute format
+            def convert_to_60min_format(x):
+                if pd.isna(x):
+                    return None
+                hrs = int(x)
+                mins = round((x - hrs) * 60)
+                return round(hrs + mins / 100, 2)
 
-        hours_60min = hours.apply(convert_to_60min_format)
+            hours_60min = hours.apply(convert_to_60min_format)
 
-        # Add new column
-        new_col_name = f"{start_col}_to_{end_col}_Hr"
-        df[new_col_name] = hours_60min
+            # Add new column
+            new_col_name = f"{start_col}_to_{end_col}_Hr"
+            df[new_col_name] = hours_60min
 
-        st.success(f"✅ Added new column: {new_col_name}")
-
+            st.success(f"✅ Added new column: {new_col_name}")
 
     # --- View Section ---
     st.markdown("### 👀 Step 2: View Data")
@@ -83,6 +83,12 @@ if uploaded_file:
         st.dataframe(df[hr_columns].head(30))
     else:
         st.dataframe(df.head(30))
+
+    # --- Clear HR Columns ---
+    if hr_columns:
+        if st.button("🧹 Clear All Calculated HR Columns"):
+            df.drop(columns=hr_columns, inplace=True)
+            st.success("✅ All hour difference columns removed!")
 
     # --- Download Section ---
     st.markdown("---")
