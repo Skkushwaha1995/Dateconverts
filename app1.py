@@ -2,15 +2,15 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-st.set_page_config(page_title="Date-Time & Hour Difference Tool", page_icon="⏱️", layout="wide")
+st.set_page_config(page_title="Date-Time & Multi Hour Difference Tool", page_icon="⏱️", layout="wide")
 
-st.title("⏱️ Date-Time Difference Calculator (in 60-minute Format)")
+st.title("⏱️ Multiple Hour Difference Calculator (in 60-minute Format)")
 
 # --- File Upload ---
 uploaded_file = st.file_uploader("📤 Upload CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded_file:
-    # Detect file type
+    # Read file
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
     else:
@@ -21,84 +21,55 @@ if uploaded_file:
     st.subheader("📋 Uploaded Data Preview")
     st.dataframe(df.head())
 
-    # --- Convert datetime columns ---
-    datetime_cols = []
-    for col in df.columns:
-        try:
-            df[col] = pd.to_datetime(df[col], errors='raise')
-            datetime_cols.append(col)
-        except:
-            pass
+    # --- Multiple Pair Selection ---
+    st.markdown("### ⏳ Step 1: Add Hour Difference Pairs")
 
-    if not datetime_cols:
-        st.error("⚠️ No valid datetime columns found!")
-        st.stop()
+    num_pairs = st.number_input("How many column pairs do you want to calculate?", min_value=1, max_value=10, value=1)
+    pairs = []
 
-    st.markdown("### ⏳ Step 1: Calculate Hour Differences")
+    for i in range(num_pairs):
+        st.markdown(f"**🕒 Pair {i+1}**")
+        c1, c2 = st.columns(2)
+        with c1:
+            start_col = st.selectbox(f"Select Start Time Column (Pair {i+1})", df.columns, key=f"start_{i}")
+        with c2:
+            end_col = st.selectbox(f"Select End Time Column (Pair {i+1})", df.columns, key=f"end_{i}")
+        pairs.append((start_col, end_col))
 
-    # Dynamic start and end column selection
-    col1, col2 = st.columns(2)
-    with col1:
-        start_col = st.selectbox("Select Start Time Column", datetime_cols, key="start")
-    with col2:
-        end_col = st.selectbox("Select End Time Column", datetime_cols, key="end")
+    # --- Button to Calculate All ---
+    if st.button("➕ Calculate All Hour Differences"):
+        for (start_col, end_col) in pairs:
+            try:
+                start_time = pd.to_datetime(df[start_col], errors="coerce")
+                end_time = pd.to_datetime(df[end_col], errors="coerce")
 
-    # Button to calculate
-    if st.button("➕ Calculate Hour Difference"):
-        if start_col == end_col:
-            st.warning("⚠️ Start and End columns cannot be the same!")
-        else:
-            # Calculate time difference
-            time_diff = df[end_col] - df[start_col]
-            hours = time_diff.dt.total_seconds() / 3600
+                # Time difference in hours (decimal)
+                time_diff = end_time - start_time
+                hours = time_diff.dt.total_seconds() / 3600
 
-            # Safe conversion to 60-minute format
-            def convert_to_60min_format(x):
-                if pd.isna(x):
-                    return None
-                hrs = int(x)
-                mins = round((x - hrs) * 60)
-                return round(hrs + mins / 100, 2)
+                def convert_to_60min_format(x):
+                    if pd.isna(x):
+                        return None
+                    hrs = int(x)
+                    mins = round((x - hrs) * 60)
+                    return round(hrs + mins / 100, 2)
 
-            hours_60min = hours.apply(convert_to_60min_format)
+                df[f"{start_col}_to_{end_col}_Hr"] = hours.apply(convert_to_60min_format)
+            except Exception as e:
+                st.error(f"Error in {start_col} → {end_col}: {e}")
 
-            # Add new column
-            new_col_name = f"{start_col}_to_{end_col}_Hr"
-            df[new_col_name] = hours_60min
-
-            st.success(f"✅ Added new column: {new_col_name}")
-
-    # --- View Section ---
-    st.markdown("### 👀 Step 2: View Data")
-
-    view_option = st.radio(
-        "Select what you want to view:",
-        ["Full Data", "Only Hour Difference Columns"],
-        horizontal=True
-    )
-
-    hr_columns = [col for col in df.columns if col.endswith("_Hr")]
-
-    if view_option == "Only Hour Difference Columns" and hr_columns:
-        st.dataframe(df[hr_columns].head(30))
-    else:
-        st.dataframe(df.head(30))
-
-    # --- Clear HR Columns ---
-    if hr_columns:
-        if st.button("🧹 Clear All Calculated HR Columns"):
-            df.drop(columns=hr_columns, inplace=True)
-            st.success("✅ All hour difference columns removed!")
+        st.success("✅ All selected hour differences calculated!")
+        st.dataframe(df.head(20))
 
     # --- Download Section ---
     st.markdown("---")
-    st.markdown("### 📥 Step 3: Download Updated Data")
+    st.markdown("### 📥 Step 2: Download Updated Data")
 
     csv_data = df.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="⬇️ Download CSV",
         data=csv_data,
-        file_name="time_difference_result.csv",
+        file_name="multi_hour_difference.csv",
         mime="text/csv"
     )
 
@@ -108,9 +79,9 @@ if uploaded_file:
     st.download_button(
         label="⬇️ Download Excel",
         data=output.getvalue(),
-        file_name="time_difference_result.xlsx",
+        file_name="multi_hour_difference.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
 else:
-    st.info("👆 Please upload a CSV or Excel file to begin.")
+    st.info("👆 Please upload a CSV or Excel file to start.")
