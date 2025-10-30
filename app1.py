@@ -1,119 +1,87 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from io import BytesIO
 
-st.set_page_config(page_title="⏱️ Hour & Percentile Calculator", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Time Difference + Percentile Calculator", page_icon="⏱️", layout="wide")
+st.title("⏱️ Time Difference + Percentile Calculator")
 
-st.title("📊 Hour Difference + Auto Percentile Calculator")
-
-# --- Initialize session ---
-if "df" not in st.session_state:
-    st.session_state.df = None
-
-# --- File Upload ---
-uploaded_file = st.file_uploader("📤 Upload CSV or Excel file", type=["csv", "xlsx"])
+# --- Upload File ---
+uploaded_file = st.file_uploader("📂 Upload Excel or CSV file", type=["xlsx", "csv"])
 
 if uploaded_file:
+    # Read file
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
     else:
-        xls = pd.ExcelFile(uploaded_file)
-        sheet_name = st.selectbox("📑 Select a sheet to process:", xls.sheet_names)
-        df = pd.read_excel(xls, sheet_name=sheet_name)
-    st.session_state.df = df
+        df = pd.read_excel(uploaded_file)
 
-if st.session_state.df is not None:
-    df = st.session_state.df
+    st.success("✅ File uploaded successfully!")
 
-    st.subheader("📋 Uploaded / Processed Data Preview")
-    st.dataframe(df.head())
+    # --- Step 1: Select Columns to Calculate Hour Difference ---
+    st.subheader("⚙️ Hour Difference Calculation")
 
-    # =========================================================
-    # 🕒 STEP 1: MULTIPLE HOUR DIFFERENCE CALCULATION
-    # =========================================================
-    st.markdown("## ⏳ Step 1: Calculate Hour Differences & Percentiles")
-
-    num_pairs = st.number_input("How many column pairs do you want to calculate?", min_value=1, max_value=10, value=1)
-    pairs = []
-
-    for i in range(num_pairs):
-        st.markdown(f"**🕒 Pair {i+1}**")
-        c1, c2 = st.columns(2)
-        with c1:
-            start_col = st.selectbox(f"Select Start Time Column (Pair {i+1})", df.columns, key=f"start_{i}")
-        with c2:
-            end_col = st.selectbox(f"Select End Time Column (Pair {i+1})", df.columns, key=f"end_{i}")
-        pairs.append((start_col, end_col))
-
-    percentile_options = [90, 95]
-    selected_percentiles = st.multiselect("Select Percentiles to Calculate:", percentile_options, default=[90, 95])
-    group_col = st.selectbox("Select Grouping Column (Optional):", [None] + list(df.columns))
-
-    if st.button("⚙️ Calculate Hours + Percentiles"):
-        hr_columns = []
-        for (start_col, end_col) in pairs:
-            try:
-                start_time = pd.to_datetime(df[start_col], errors="coerce")
-                end_time = pd.to_datetime(df[end_col], errors="coerce")
-                diff_hours = (end_time - start_time).dt.total_seconds() / 3600
-
-                # Convert to hr.min (60-min format)
-                def convert_to_60min_format(x):
-                    if pd.isna(x):
-                        return None
-                    hrs = int(x)
-                    mins = round((x - hrs) * 60)
-                    return round(hrs + mins / 100, 2)
-
-                hr_col = f"{start_col}_to_{end_col}_Hr"
-                df[hr_col] = diff_hours.apply(convert_to_60min_format)
-                hr_columns.append(hr_col)
-
-            except Exception as e:
-                st.error(f"⚠️ Error calculating {start_col} → {end_col}: {e}")
-
-        # =========================================================
-        # 🎯 STEP 2: PERCENTILE CALCULATION (Auto)
-        # =========================================================
-        if hr_columns:
-            for p in selected_percentiles:
-                if group_col:
-                    grouped = df.groupby(group_col)[hr_columns].quantile(p / 100).reset_index()
-                    df = pd.merge(df, grouped, on=group_col, how="left", suffixes=("", f"_P{p}"))
-                else:
-                    for col in hr_columns:
-                        percentile_val = df[col].quantile(p / 100)
-                        df[f"{col}_P{p}"] = percentile_val
-
-            st.success(f"✅ Hour & {', '.join(map(str, selected_percentiles))}th Percentile calculated successfully!")
-            st.session_state.df = df
-            st.dataframe(df.head(20))
-        else:
-            st.warning("⚠️ No valid hour columns found to calculate percentiles.")
-
-    # =========================================================
-    # 💾 STEP 3: DOWNLOAD FINAL DATA
-    # =========================================================
-    st.markdown("---")
-    st.markdown("## 💾 Step 2: Download Final Updated Dataset")
-
-    csv_data = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="⬇️ Download Full Data (CSV)",
-        data=csv_data,
-        file_name="final_data.csv",
-        mime="text/csv"
+    time_columns = df.columns.tolist()
+    col_pairs = st.multiselect(
+        "Select column pairs for hour difference (Start ➜ End)",
+        time_columns,
+        placeholder="Example: collection_time, sync_time_to_report_approval_time"
     )
 
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        df.to_excel(writer, index=False, sheet_name="Processed_Data")
+    if len(col_pairs) >= 2 and len(col_pairs) % 2 == 0:
+        for i in range(0, len(col_pairs), 2):
+            start_col = col_pairs[i]
+            end_col = col_pairs[i + 1]
+            new_col = f"{start_col}_to_{end_col}_Hr"
+
+            # Convert to datetime
+            df[start_col] = pd.to_datetime(df[start_col], errors='coerce')
+            df[end_col] = pd.to_datetime(df[end_col], errors='coerce')
+
+            # Calculate hour difference
+            df[new_col] = (df[end_col] - df[start_col]).dt.total_seconds() / 3600
+            df[new_col] = df[new_col].round(2)  # round to 2 decimals
+
+        st.success("✅ Hour difference columns calculated successfully!")
+
+    # --- Step 2: Percentile Calculation ---
+    st.subheader("📈 Percentile Calculation")
+
+    hr_cols = [c for c in df.columns if c.endswith("_Hr")]
+
+    if hr_cols:
+        percentile_cols = st.multiselect(
+            "Select hour columns for percentile calculation",
+            hr_cols
+        )
+
+        percentile_value = st.selectbox(
+            "Select percentile value",
+            [90, 95, 99],
+            index=1
+        )
+
+        if st.button("Calculate Percentile"):
+            for col in percentile_cols:
+                if col in df.columns:
+                    val = np.percentile(df[col].dropna(), percentile_value)
+                    new_col = f"{col}_P{percentile_value}"
+                    df[new_col] = round(val, 2)  # ✅ Rounded percentile (like 8.20)
+
+            st.success(f"✅ {percentile_value}th percentile calculated and added to main data!")
+
+    # --- Step 3: Display Final Data ---
+    st.subheader("🧾 Final Data Preview")
+    st.dataframe(df)
+
+    # --- Step 4: Download Option ---
+    buffer = BytesIO()
+    df.to_excel(buffer, index=False)
     st.download_button(
-        label="⬇️ Download Full Data (Excel)",
-        data=output.getvalue(),
-        file_name="final_data.xlsx",
+        label="📥 Download Processed File",
+        data=buffer.getvalue(),
+        file_name="processed_time_percentile.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
 else:
-    st.info("👆 Please upload a CSV or Excel file to begin.")
+    st.info("📤 Please upload a file to start processing.")
