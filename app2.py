@@ -50,14 +50,22 @@ if st.session_state.df is not None:
     selected_percentiles = st.multiselect("Select Percentiles to Calculate:", percentile_options, default=[90, 95])
     group_col = st.selectbox("Select Grouping Column (Optional):", [None] + list(df.columns))
 
+    # ✅ NEW: Ask if user wants automatic 30-min bucket creation
+    auto_bucket = st.checkbox("🧮 Automatically convert calculated columns into 30-min interval buckets")
+
+    # =========================================================
+    # ⚙️ BUTTON TO CALCULATE HOURS
+    # =========================================================
     if st.button("⚙️ Calculate Hours + Percentiles"):
         hr_columns = []
+
         for (start_col, end_col) in pairs:
             try:
                 start_time = pd.to_datetime(df[start_col], errors="coerce")
                 end_time = pd.to_datetime(df[end_col], errors="coerce")
                 diff_hours = (end_time - start_time).dt.total_seconds() / 3600
 
+                # Convert to hr.min (like 4.30 = 4h 30m)
                 def convert_to_60min_format(x):
                     if pd.isna(x):
                         return None
@@ -88,62 +96,46 @@ if st.session_state.df is not None:
                         df[f"{col}_P{p}"] = percentile_val
 
             st.success(f"✅ Hour & {', '.join(map(str, selected_percentiles))}th Percentile calculated successfully!")
+
+            # =========================================================
+            # 🧮 AUTO BUCKET CREATION IF CHECKED
+            # =========================================================
+            if auto_bucket:
+                for col in hr_columns:
+                    try:
+                        numeric_val = pd.to_numeric(df[col], errors="coerce")
+                        numeric_val = numeric_val.dropna()
+
+                        if len(numeric_val) == 0:
+                            st.warning(f"⚠️ Column {col} has no numeric values.")
+                            continue
+
+                        min_val = np.floor(numeric_val.min())
+                        max_val = np.ceil(numeric_val.max())
+                        bins = np.arange(min_val, max_val + 0.5, 0.5)
+
+                        labels = [f"{bins[i]:.1f}-{bins[i+1]:.1f} Hr" for i in range(len(bins) - 1)]
+                        bucket_col = col.replace("_Hr", "_Bucket")
+                        df[bucket_col] = pd.cut(pd.to_numeric(df[col], errors="coerce"),
+                                                bins=bins, labels=labels, include_lowest=True)
+                    except Exception as e:
+                        st.error(f"⚠️ Error bucketing column {col}: {e}")
+
+                st.success("✅ 30-Minute Interval Buckets created successfully!")
+
+            # Update session + preview
             st.session_state.df = df
             st.dataframe(df.head(20))
         else:
             st.warning("⚠️ No valid hour columns found to calculate percentiles.")
 
     # =========================================================
-    # 🧮 STEP 3: CREATE 30-MIN BUCKETS
+    # 💾 STEP 3: DOWNLOAD FINAL DATA
     # =========================================================
     st.markdown("---")
-    st.markdown("## 🧮 Step 3: Convert Calculated Hour Columns into 30-Minute Buckets")
+    st.markdown("## 💾 Step 2: Download Final Updated Dataset")
 
-    # Always check latest dataframe
-    df = st.session_state.df.copy()
-    hr_cols_available = [col for col in df.columns if col.endswith("_Hr")]
-
-    if hr_cols_available:
-        selected_hr_cols = st.multiselect(
-            "Select hour columns to bucketize (30-min intervals):",
-            hr_cols_available,
-            default=hr_cols_available,
-            key="bucket_cols"
-        )
-
-        if st.button("🧾 Convert to 30-Minute Buckets"):
-            for col in selected_hr_cols:
-                try:
-                    numeric_val = pd.to_numeric(df[col], errors="coerce")
-                    numeric_val = numeric_val.dropna()
-
-                    if len(numeric_val) == 0:
-                        st.warning(f"⚠️ Column {col} has no numeric values.")
-                        continue
-
-                    min_val = np.floor(numeric_val.min())
-                    max_val = np.ceil(numeric_val.max())
-                    bins = np.arange(min_val, max_val + 0.5, 0.5)
-
-                    labels = [f"{bins[i]:.1f}-{bins[i+1]:.1f} Hr" for i in range(len(bins) - 1)]
-                    bucket_col = col.replace("_Hr", "_Bucket")
-                    df[bucket_col] = pd.cut(pd.to_numeric(df[col], errors="coerce"),
-                                            bins=bins, labels=labels, include_lowest=True)
-                except Exception as e:
-                    st.error(f"⚠️ Error bucketing column {col}: {e}")
-
-            st.success("✅ 30-Minute Interval Buckets created successfully!")
-            st.session_state.df = df
-            st.dataframe(df.head(20))
-    else:
-        st.info("ℹ️ No hour columns found. Please calculate hour differences first.")
-
-    # =========================================================
-    # 💾 STEP 4: DOWNLOAD FINAL DATA
-    # =========================================================
-    st.markdown("---")
-    st.markdown("## 💾 Step 4: Download Final Updated Dataset")
-
+    df = st.session_state.df
     csv_data = df.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="⬇️ Download Full Data (CSV)",
