@@ -99,31 +99,36 @@ if st.session_state.df is not None:
     st.markdown("---")
     st.markdown("## 🧮 Step 3: Convert Calculated Hour Columns into 30-Minute Buckets")
 
+    # Always check latest dataframe
+    df = st.session_state.df.copy()
     hr_cols_available = [col for col in df.columns if col.endswith("_Hr")]
+
     if hr_cols_available:
         selected_hr_cols = st.multiselect(
             "Select hour columns to bucketize (30-min intervals):",
             hr_cols_available,
-            default=hr_cols_available
+            default=hr_cols_available,
+            key="bucket_cols"
         )
 
         if st.button("🧾 Convert to 30-Minute Buckets"):
             for col in selected_hr_cols:
                 try:
-                    # Convert 4.30 -> 4.5 format for math
-                    numeric_val = df[col].astype(float)
+                    numeric_val = pd.to_numeric(df[col], errors="coerce")
+                    numeric_val = numeric_val.dropna()
 
-                    # Define bins in 0.5 (30-minute) intervals
+                    if len(numeric_val) == 0:
+                        st.warning(f"⚠️ Column {col} has no numeric values.")
+                        continue
+
                     min_val = np.floor(numeric_val.min())
                     max_val = np.ceil(numeric_val.max())
                     bins = np.arange(min_val, max_val + 0.5, 0.5)
 
-                    labels = []
-                    for i in range(len(bins) - 1):
-                        labels.append(f"{bins[i]:.1f}-{bins[i+1]:.1f} Hr")
-
+                    labels = [f"{bins[i]:.1f}-{bins[i+1]:.1f} Hr" for i in range(len(bins) - 1)]
                     bucket_col = col.replace("_Hr", "_Bucket")
-                    df[bucket_col] = pd.cut(numeric_val, bins=bins, labels=labels, include_lowest=True)
+                    df[bucket_col] = pd.cut(pd.to_numeric(df[col], errors="coerce"),
+                                            bins=bins, labels=labels, include_lowest=True)
                 except Exception as e:
                     st.error(f"⚠️ Error bucketing column {col}: {e}")
 
