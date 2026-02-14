@@ -4,27 +4,34 @@ import re
 st.set_page_config(page_title="EV Variant HTML Converter", layout="wide")
 
 st.title("🚗 EV Variant to HTML Code Converter")
-st.markdown("Paste raw EV variant data and generate clean HTML.")
 
 raw_data = st.text_area("Paste Variant Data Here", height=300)
 
 def extract_data(line):
-    # Extract full name before (Electric)
-    name_match = re.search(r'^(.*?)\s*\(Electric\)', line)
-    name = name_match.group(1).strip() if name_match else ""
 
-    # Fix charger formatting (7.2kw → 7.2kW)
+    # --- FULL NAME (Everything before Rs. OR (Electric)) ---
+    name = line
+
+    if "Rs." in line:
+        name = line.split("Rs.")[0]
+
+    if "(Electric)" in name:
+        name = name.replace("(Electric)", "")
+
+    name = name.strip()
+
+    # Fix kw formatting
     name = re.sub(r'(\d+\.?\d*)kw', r'\1kW', name, flags=re.IGNORECASE)
 
-    # Extract price
+    # --- Extract Price ---
     price_match = re.search(r'Rs\.([\d\.]+)', line)
     price = price_match.group(1) if price_match else ""
 
-    # Extract battery
+    # --- Extract Battery ---
     battery_match = re.search(r'(\d+\.?\d*)\s*kWh', line)
     battery = battery_match.group(1) + " kWh" if battery_match else ""
 
-    # Extract range
+    # --- Extract Range ---
     range_match = re.search(r'(\d+)\s*km', line)
     range_km = range_match.group(1) + " km" if range_match else ""
 
@@ -34,10 +41,9 @@ def extract_data(line):
 if st.button("Generate HTML Code"):
 
     if not raw_data.strip():
-        st.warning("Please paste data first.")
+        st.warning("Please paste some data.")
     else:
         lines = raw_data.strip().split("\n")
-        variant_count = 0
 
         html_output = """
 <div class="variant-toggle">
@@ -58,15 +64,13 @@ if st.button("Generate HTML Code"):
     <span>₹{price} Lakh | {battery} | {range_km}</span>
   </div>
 """
-                variant_count += 1
 
         html_output += "\n</div>"
 
-        st.success(f"✅ {variant_count} Variants Generated")
         st.code(html_output, language="html")
 
         st.download_button(
-            "📥 Download HTML File",
+            "Download HTML",
             html_output,
             "variants.html",
             "text/html"
