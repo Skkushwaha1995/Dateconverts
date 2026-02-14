@@ -3,31 +3,47 @@ import re
 
 st.set_page_config(page_title="EV Variant HTML Converter", layout="wide")
 
-st.title("🚗 EV Variant to HTML Converter")
-st.markdown("Paste raw EV variant data and generate HTML instantly.")
+st.title("🚗 EV Variant to HTML Code Converter")
+st.markdown("Paste raw EV variant data below and generate ready-to-use HTML code.")
 
-raw_data = st.text_area("Paste Variant Data Below", height=300)
+# -------------------------
+# TEXT INPUT
+# -------------------------
+raw_data = st.text_area("Paste Variant Data Here", height=300)
 
+# -------------------------
+# DATA EXTRACTION FUNCTION
+# -------------------------
 def extract_data(line):
-    price = re.search(r'Rs\.([\d\.]+)', line)
-    battery = re.search(r'(\d+\.?\d*)\s?kWh', line)
-    range_km = re.search(r'(\d+)\s?km', line)
+    # Extract price
+    price_match = re.search(r'Rs\.([\d\.]+)', line)
+    price = price_match.group(1) if price_match else ""
 
-    price = price.group(1) if price else ""
-    battery = battery.group(1) + " kWh" if battery else ""
-    range_km = range_km.group(1) + " km" if range_km else ""
+    # Extract battery
+    battery_match = re.search(r'(\d+\.?\d*)\s?kWh', line)
+    battery = battery_match.group(1) + " kWh" if battery_match else ""
 
-    # Clean name
-    name = line.split("(Electric)")[0]
-    name = re.sub(r"Mahindra\s+[A-Za-z0-9\s]+", "", name).strip()
+    # Extract range
+    range_match = re.search(r'(\d+)\s?km', line)
+    range_km = range_match.group(1) + " km" if range_match else ""
+
+    # Extract full variant name (before "(Electric)")
+    name = line.split("(Electric)")[0].strip()
 
     return name, price, battery, range_km
 
+# -------------------------
+# BUTTON ACTION
+# -------------------------
 if st.button("Generate HTML Code"):
 
-    lines = raw_data.strip().split("\n")
+    if raw_data.strip() == "":
+        st.warning("Please paste variant data first.")
+    else:
+        lines = raw_data.strip().split("\n")
+        variant_count = 0
 
-    html = """
+        html_output = """
 <div class="variant-toggle">
   <span class="variant-count-text"></span>
   <span class="arrow">▼</span>
@@ -36,24 +52,31 @@ if st.button("Generate HTML Code"):
 <div class="variant-content">
 """
 
-    for line in lines:
-        if line.strip():
-            name, price, battery, range_km = extract_data(line)
+        for line in lines:
+            if line.strip():
+                name, price, battery, range_km = extract_data(line)
 
-            html += f"""
+                html_output += f"""
   <div class="variant-item">
     <span>{name}</span>
     <span>₹{price} Lakh | {battery} | {range_km}</span>
   </div>
 """
+                variant_count += 1
 
-    html += "\n</div>"
+        html_output += "\n</div>"
 
-    st.code(html, language="html")
+        # Show Variant Count
+        st.success(f"✅ {variant_count} Variants Generated Successfully")
 
-    st.download_button(
-        label="Download HTML File",
-        data=html,
-        file_name="variants.html",
-        mime="text/html"
-    )
+        # Show HTML
+        st.subheader("Generated HTML Code:")
+        st.code(html_output, language="html")
+
+        # Download Button
+        st.download_button(
+            label="📥 Download HTML File",
+            data=html_output,
+            file_name="variants.html",
+            mime="text/html"
+        )
